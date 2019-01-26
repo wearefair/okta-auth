@@ -1,3 +1,4 @@
+package okta
 
 // Used to indicate that the current authentication flow cannot proceed.
 // When a terminal error is returned, the program should print the error and
