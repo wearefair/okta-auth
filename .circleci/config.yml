@@ -1,0 +1,13 @@
+version: 2
+
+jobs:
+  build:
+    working_directory: /go/src/github.com/wearefair/okta-auth
+    docker:
+      - image: golang:1.11
+    steps:
+      - checkout
+      - run:
+          name: Run unit tests
+          command: |
+            go test -race -v ./...
