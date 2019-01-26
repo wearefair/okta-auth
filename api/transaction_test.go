@@ -233,7 +233,7 @@ var sampleStateMFARequired = `
 }
 `
 
-// This is not used, just left for documentation of "reality"
+// Grabbed from a real API response
 var sampleStateMFAChallenge = `
 {
   "stateToken": "00CxTwYaT7vmrv2UShWT1KPhf4KLmeO5mspBg303rO",
