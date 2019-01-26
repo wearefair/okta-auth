@@ -1,47 +1,12 @@
-package okta
+package api
 
 import (
 	"encoding/json"
 	"reflect"
-	"sort"
 	"testing"
+
+	"github.com/wearefair/okta-auth/factors"
 )
-
-func TestFactorSorting(t *testing.T) {
-	factors := Factors{
-		Factor{FactorType: FactorTypePush},
-		Factor{FactorType: FactorTypeSMS},
-		Factor{FactorType: FactorTypeCall},
-		Factor{FactorType: FactorTypeU2F},
-		Factor{FactorType: FactorTypeToken},
-		Factor{FactorType: FactorTypeTokenSoftwareTOTP},
-		Factor{FactorType: FactorType("unknown2")},
-		Factor{FactorType: FactorTypeTokenHardware},
-		Factor{FactorType: FactorTypeQuestion},
-		Factor{FactorType: FactorType("unknown1")},
-	}
-
-	expected := Factors{
-		Factor{FactorType: FactorTypeU2F},
-		Factor{FactorType: FactorTypeToken},
-		Factor{FactorType: FactorTypeTokenSoftwareTOTP},
-		Factor{FactorType: FactorTypeTokenHardware},
-		Factor{FactorType: FactorTypePush},
-		Factor{FactorType: FactorTypeSMS},
-		Factor{FactorType: FactorTypeCall},
-		Factor{FactorType: FactorTypeQuestion},
-		Factor{FactorType: FactorType("unknown1")},
-		Factor{FactorType: FactorType("unknown2")},
-	}
-
-	sort.Sort(factors)
-
-	for i, expected := range expected {
-		if factors[i].FactorType != expected.FactorType {
-			t.Errorf("%0d: expected %s but got %s", i, expected.FactorType, factors[i].FactorType)
-		}
-	}
-}
 
 func TestFactorUnmarshalJSON(t *testing.T) {
 	testCases := []struct {
@@ -52,14 +17,14 @@ func TestFactorUnmarshalJSON(t *testing.T) {
 			input: sampleTokenFactor,
 			expected: Factor{
 				Id:         "uftpep6vfeujtcuPc1t6",
-				FactorType: FactorTypeTokenSoftwareTOTP,
+				FactorType: factors.FactorTypeTokenSoftwareTOTP,
 				Provider:   "GOOGLE",
 				Profile: FactorProfileToken{
-					CredentialId: "marshallb@fair.com",
+					CredentialId: "first@example.com",
 				},
 				Links: Links{
 					Verify: Link{
-						HREF: "https://fair.okta.com/api/v1/authn/factors/uftpep6vfeujtcuPc1t6/verify",
+						HREF: "https://example.okta.com/api/v1/authn/factors/uftpep6vfeujtcuPc1t6/verify",
 					},
 				},
 			},
@@ -68,16 +33,16 @@ func TestFactorUnmarshalJSON(t *testing.T) {
 			input: sampleU2FFactor,
 			expected: Factor{
 				Id:         "fuf59d1ohqJZyOelX1t7",
-				FactorType: FactorTypeU2F,
+				FactorType: factors.FactorTypeU2F,
 				Provider:   "FIDO",
 				Profile: FactorProfileU2F{
 					CredentialId: "s94CdJnUd148p95PNq7AaY2Dv1QFrLJ12Vpkno-Q7WalmBTtB5TMnzDNL_yX84Ay49qnEiUXtSx0KK5I60ht2g",
-					AppId:        "https://fair.okta.com",
+					AppId:        "https://example.okta.com",
 					Version:      "U2F_V2",
 				},
 				Links: Links{
 					Verify: Link{
-						HREF: "https://fair.okta.com/api/v1/authn/factors/fuf59d1ohqJZyOelX1t7/verify",
+						HREF: "https://example.okta.com/api/v1/authn/factors/fuf59d1ohqJZyOelX1t7/verify",
 					},
 				},
 			},
@@ -104,11 +69,11 @@ var sampleTokenFactor = `
   "provider": "GOOGLE",
   "vendorName": "GOOGLE",
   "profile": {
-    "credentialId": "marshallb@fair.com"
+    "credentialId": "first@example.com"
   },
   "_links": {
     "verify": {
-      "href": "https:\/\/fair.okta.com\/api\/v1\/authn\/factors\/uftpep6vfeujtcuPc1t6\/verify",
+      "href": "https:\/\/example.okta.com\/api\/v1\/authn\/factors\/uftpep6vfeujtcuPc1t6\/verify",
       "hints": {
         "allow": [
           "POST"
@@ -127,12 +92,12 @@ var sampleU2FFactor = `
   "vendorName": "FIDO",
   "profile": {
     "credentialId": "s94CdJnUd148p95PNq7AaY2Dv1QFrLJ12Vpkno-Q7WalmBTtB5TMnzDNL_yX84Ay49qnEiUXtSx0KK5I60ht2g",
-    "appId": "https:\/\/fair.okta.com",
+    "appId": "https:\/\/example.okta.com",
     "version": "U2F_V2"
   },
   "_links": {
     "verify": {
-      "href": "https:\/\/fair.okta.com\/api\/v1\/authn\/factors\/fuf59d1ohqJZyOelX1t7\/verify",
+      "href": "https:\/\/example.okta.com\/api\/v1\/authn\/factors\/fuf59d1ohqJZyOelX1t7\/verify",
       "hints": {
         "allow": [
           "POST"
@@ -154,9 +119,9 @@ var sampleStateMFARequired = `
       "id": "00u2k4zip5XnaVacd1t6",
       "passwordChanged": "2016-07-25T21:45:09.000Z",
       "profile": {
-        "login": "marshallb@fair.com",
-        "firstName": "Marshall",
-        "lastName": "Brekka",
+        "login": "first@example.com",
+        "firstName": "First",
+        "lastName": "Last",
         "locale": "en",
         "timeZone": "America/Los_Angeles"
       }
@@ -168,11 +133,11 @@ var sampleStateMFARequired = `
         "provider": "OKTA",
         "vendorName": "OKTA",
         "profile": {
-          "phoneNumber": "+1 XXX-XXX-5260"
+          "phoneNumber": "+1 XXX-XXX-5555"
         },
         "_links": {
           "verify": {
-            "href": "https://fair.okta.com/api/v1/authn/factors/sms59eptnqQ7XZ2xe1t7/verify",
+            "href": "https://example.okta.com/api/v1/authn/factors/sms59eptnqQ7XZ2xe1t7/verify",
             "hints": {
               "allow": [
                 "POST"
@@ -188,12 +153,12 @@ var sampleStateMFARequired = `
         "vendorName": "FIDO",
         "profile": {
           "credentialId": "s94CdJnUd148p95PNq7AaY2Dv1QFrLJ12Vpkno-Q7WalmBTtB5TMnzDNL_yX84Ay49qnEiUXtSx0KK5I60ht2g",
-          "appId": "https://fair.okta.com",
+          "appId": "https://example.okta.com",
           "version": "U2F_V2"
         },
         "_links": {
           "verify": {
-            "href": "https://fair.okta.com/api/v1/authn/factors/fuf59d1ohqJZyOelX1t7/verify",
+            "href": "https://example.okta.com/api/v1/authn/factors/fuf59d1ohqJZyOelX1t7/verify",
             "hints": {
               "allow": [
                 "POST"
@@ -208,11 +173,11 @@ var sampleStateMFARequired = `
         "provider": "GOOGLE",
         "vendorName": "GOOGLE",
         "profile": {
-          "credentialId": "marshallb@fair.com"
+          "credentialId": "first@example.com"
         },
         "_links": {
           "verify": {
-            "href": "https://fair.okta.com/api/v1/authn/factors/uftpep6vfeujtcuPc1t6/verify",
+            "href": "https://example.okta.com/api/v1/authn/factors/uftpep6vfeujtcuPc1t6/verify",
             "hints": {
               "allow": [
                 "POST"
@@ -230,7 +195,7 @@ var sampleStateMFARequired = `
   },
   "_links": {
     "cancel": {
-      "href": "https://fair.okta.com/api/v1/authn/cancel",
+      "href": "https://example.okta.com/api/v1/authn/cancel",
       "hints": {
         "allow": [
           "POST"
@@ -252,9 +217,9 @@ var sampleStateMFAChallenge = `
       "id": "00u2k4zip5XnaVacd1t6",
       "passwordChanged": "2016-07-25T21:45:09.000Z",
       "profile": {
-        "login": "marshallb@fair.com",
-        "firstName": "Marshall",
-        "lastName": "Brekka",
+        "login": "first@example.com",
+        "firstName": "First",
+        "lastName": "Last",
         "locale": "en",
         "timeZone": "America/Los_Angeles"
       }
@@ -265,7 +230,7 @@ var sampleStateMFAChallenge = `
       "provider": "OKTA",
       "vendorName": "OKTA",
       "profile": {
-        "phoneNumber": "+1 XXX-XXX-5260"
+        "phoneNumber": "+1 XXX-XXX-5555"
       }
     },
     "policy": {
@@ -277,7 +242,7 @@ var sampleStateMFAChallenge = `
   "_links": {
     "next": {
       "name": "verify",
-      "href": "https://fair.okta.com/api/v1/authn/factors/sms59eptnqQ7XZ2xe1t7/verify",
+      "href": "https://example.okta.com/api/v1/authn/factors/sms59eptnqQ7XZ2xe1t7/verify",
       "hints": {
         "allow": [
           "POST"
@@ -285,7 +250,7 @@ var sampleStateMFAChallenge = `
       }
     },
     "cancel": {
-      "href": "https://fair.okta.com/api/v1/authn/cancel",
+      "href": "https://example.okta.com/api/v1/authn/cancel",
       "hints": {
         "allow": [
           "POST"
@@ -293,7 +258,7 @@ var sampleStateMFAChallenge = `
       }
     },
     "prev": {
-      "href": "https://fair.okta.com/api/v1/authn/previous",
+      "href": "https://example.okta.com/api/v1/authn/previous",
       "hints": {
         "allow": [
           "POST"
@@ -303,7 +268,7 @@ var sampleStateMFAChallenge = `
     "resend": [
       {
         "name": "sms",
-        "href": "https://fair.okta.com/api/v1/authn/factors/sms59eptnqQ7XZ2xe1t7/verify/resend",
+        "href": "https://example.okta.com/api/v1/authn/factors/sms59eptnqQ7XZ2xe1t7/verify/resend",
         "hints": {
           "allow": [
             "POST"
@@ -326,9 +291,9 @@ var sampleStateMFAChallengeSMS = `
       "id": "00u2k4zip5XnaVacd1t6",
       "passwordChanged": "2016-07-25T21:45:09.000Z",
       "profile": {
-        "login": "marshallb@fair.com",
-        "firstName": "Marshall",
-        "lastName": "Brekka",
+        "login": "first@example.com",
+        "firstName": "First",
+        "lastName": "Last",
         "locale": "en",
         "timeZone": "America/Los_Angeles"
       }
@@ -339,7 +304,7 @@ var sampleStateMFAChallengeSMS = `
       "provider": "OKTA",
       "vendorName": "OKTA",
       "profile": {
-        "phoneNumber": "+1 XXX-XXX-5260"
+        "phoneNumber": "+1 XXX-XXX-5555"
       }
     },
     "policy": {
@@ -351,7 +316,7 @@ var sampleStateMFAChallengeSMS = `
   "_links": {
     "next": {
       "name": "verify",
-      "href": "https://fair.okta.com/api/v1/authn/factors/sms59eptnqQ7XZ2xe1t7/verify",
+      "href": "https://example.okta.com/api/v1/authn/factors/sms59eptnqQ7XZ2xe1t7/verify",
       "hints": {
         "allow": [
           "POST"
@@ -359,7 +324,7 @@ var sampleStateMFAChallengeSMS = `
       }
     },
     "cancel": {
-      "href": "https://fair.okta.com/api/v1/authn/cancel",
+      "href": "https://example.okta.com/api/v1/authn/cancel",
       "hints": {
         "allow": [
           "POST"
@@ -367,7 +332,7 @@ var sampleStateMFAChallengeSMS = `
       }
     },
     "prev": {
-      "href": "https://fair.okta.com/api/v1/authn/previous",
+      "href": "https://example.okta.com/api/v1/authn/previous",
       "hints": {
         "allow": [
           "POST"
@@ -377,7 +342,7 @@ var sampleStateMFAChallengeSMS = `
     "resend": [
       {
         "name": "sms",
-        "href": "https://fair.okta.com/api/v1/authn/factors/sms59eptnqQ7XZ2xe1t7/verify/resend",
+        "href": "https://example.okta.com/api/v1/authn/factors/sms59eptnqQ7XZ2xe1t7/verify/resend",
         "hints": {
           "allow": [
             "POST"
