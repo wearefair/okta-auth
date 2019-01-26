@@ -22,34 +22,34 @@ type Factor struct {
 	Provider string
 
 	// Specifies the profile for a FactorTypeQuestion factor.
-	ProfileQuestion *FactorProfileQuestion
+	ProfileQuestion *ProfileQuestion
 	// Specifies the profile for a FactorTypeSMS factor.
-	ProfileSMS *FactorProfileSMS
+	ProfileSMS *ProfileSMS
 	// Specifies the profile for a FactorTypeCall factor.
-	ProfileCall *FactorProfileCall
+	ProfileCall *ProfileCall
 	// Specifies the profile for a FactorTypeToken, FactorTypeTokenHardware,
 	// and FactorTypeTokenSoftwareTOTP factor.
-	ProfileToken *FactorProfileToken
+	ProfileToken *ProfileToken
 }
 
-type FactorProfileQuestion struct {
+type ProfileQuestion struct {
 	// Display text for question.
 	QuestionText string
 }
 
-type FactorProfileSMS struct {
+type ProfileSMS struct {
 	// Phone number of mobile device.
 	PhoneNumber string
 }
 
-type FactorProfileCall struct {
+type ProfileCall struct {
 	// Phone number of the device.
 	PhoneNumber string
 	// Extension of the device.
 	PhoneExtension string
 }
 
-type FactorProfileToken struct {
+type ProfileToken struct {
 	// Id for credential. Ex: "dade.murphy@example.com"
 	CredentialId string
 }
