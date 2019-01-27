@@ -66,7 +66,7 @@ func (c *OktaClient) Authenticate(username, password string) (string, error) {
 // an error or a Okta session token.
 //
 // This is the entrypoint to the main recursive loop.
-// All methods will eventually call call this method, or return the session token or error.
+// All methods will eventually call this method, or return the session token or error.
 func (c *OktaClient) handleAuthUserFlow(transaction api.AuthenticationTransaction, autoAttemptU2F bool) (string, error) {
 	c.log("Handling auth user flow: status %q", transaction.Status)
 
@@ -109,7 +109,6 @@ func (c *OktaClient) handleMFARequired(transaction api.AuthenticationTransaction
 	}
 
 	publicFactors := apiFactorsToPublicFactors(supported)
-
 	factor, err := c.prompts.ChooseFactor(publicFactors)
 	if err != nil {
 		return "", err
@@ -133,7 +132,7 @@ func (c *OktaClient) startMFA(transaction api.AuthenticationTransaction, factor 
 		return "", err
 	}
 	if apiError != nil {
-		c.prompts.PresentUserError(fmt.Sprintf("Got error trying to use MFA %s: %s\n", factor.FactorType, apiError.ErrorSummary))
+		c.prompts.PresentUserError(fmt.Sprintf("Got error trying to use MFA %s: %s", factor.FactorType, apiError.ErrorSummary))
 	}
 
 	return c.handleAuthUserFlow(newTransaction, false)
@@ -171,7 +170,6 @@ func (c *OktaClient) handleMFAChallenge(transaction api.AuthenticationTransactio
 			ClientData:    authResp.ClientData,
 			SignatureData: authResp.SignatureData,
 		}
-
 		newTransaction, apiError, err := c.sendTransactionRequest(transaction.Links.Next.HREF, &verifyReq)
 		if err != nil {
 			return "", err
@@ -193,7 +191,6 @@ func (c *OktaClient) handleMFAChallenge(transaction api.AuthenticationTransactio
 			},
 			PassCode: code,
 		}
-
 		newTransaction, apiError, err := c.sendTransactionRequest(transaction.Links.Next.HREF, &verifyReq)
 		if err != nil {
 			return "", err
@@ -214,14 +211,13 @@ func (c *OktaClient) cancelCurrentFactorWithErrorMessage(transaction api.Authent
 	return c.cancelCurrentFactor(transaction)
 }
 
-// Canceles the current factor, and goes back into the authentication transaction loop.
+// Cancels the current factor, and goes back into the authentication transaction loop.
 func (c *OktaClient) cancelCurrentFactor(transaction api.AuthenticationTransaction) (string, error) {
 	request := &api.FactorVerify{transaction.StateToken}
 	newTransaction, apiError, err := c.sendTransactionRequest(transaction.Links.Prev.HREF, request)
 	if err != nil {
 		return "", err
 	}
-
 	if apiError != nil {
 		c.log("Got error trying to cancel MFA factor: uri %q, error: %q", transaction.Links.Prev.HREF, apiError.ErrorSummary)
 		return "", TerminalError(unexpectedErrorMessage)
