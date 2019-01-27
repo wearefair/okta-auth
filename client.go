@@ -8,6 +8,7 @@ import (
 	"github.com/wearefair/okta-auth/factors"
 )
 
+// Interface for logging debug logs.
 type DebugLogger interface {
 	Log(string)
 }
@@ -36,7 +37,7 @@ type VerifyU2FRequest struct {
 	Challenge string
 }
 
-// string returned after successfully authenticating with a U2F device.
+// Data returned after successfully authenticating with a U2F device.
 // For more information see https://fidoalliance.org/specifications/
 type VerifyU2FResponse struct {
 	ClientData    string
@@ -76,6 +77,10 @@ type OktaClient struct {
 	prompts    Prompts
 }
 
+// Constructs a new OktaClient with the given config.
+//
+// The only required arguments are the OktaDomain, and Prompts.
+// An error is returned if either of those arguments are omitted.
 func New(conf ClientConfig) (*OktaClient, error) {
 	if conf.OktaDomain == "" {
 		return nil, fmt.Errorf("ClientConfig.OktaDomain can't be blank")
