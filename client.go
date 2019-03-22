@@ -68,6 +68,9 @@ type Prompts interface {
 
 	// Prompt the user for a code for the given factor (SMS, TOTP, Call).
 	VerifyCode(factor factors.Factor) (string, error)
+
+	// Prompt user to check their phone for Okta Verify push notification
+	VerifyPush()
 }
 
 type OktaClient struct {

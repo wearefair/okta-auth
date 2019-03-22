@@ -33,11 +33,22 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cenkalti/backoff"
 	"github.com/wearefair/okta-auth/api"
 	"github.com/wearefair/okta-auth/factors"
 )
 
 const unexpectedErrorMessage = "Encountered an unexpected error."
+const timeoutErrorMessage = "Authentication Timed Out"
+
+// Custom error for handling auth timeout and rejection
+type NonFatalAuthError struct {
+	ErrorSummary string
+}
+
+func (nonFatalAuthError NonFatalAuthError) Error() string {
+	return nonFatalAuthError.ErrorSummary
+}
 
 // Given a username and password, returns a session token or an error.
 // You can then use the session token to obtain a session id.
@@ -197,6 +208,60 @@ func (c *OktaClient) handleMFAChallenge(transaction api.AuthenticationTransactio
 		}
 		if apiError != nil {
 			return c.cancelCurrentFactorWithErrorMessage(transaction, apiError.ErrorSummary)
+		}
+		return c.handleAuthUserFlow(newTransaction, false)
+
+	case factors.FactorTypePush:
+		var newTransaction api.AuthenticationTransaction
+
+		// Sends a request to Okta to push a notification to user's device
+		verifyReq := api.FactorVerifyPush{
+			FactorVerify: api.FactorVerify{
+				StateToken: transaction.StateToken,
+			},
+		}
+		transaction, apiError, err := c.sendTransactionRequest(transaction.Links.Next.HREF, &verifyReq)
+		if err != nil {
+			return c.cancelCurrentFactorWithErrorMessage(transaction, "Cancelled")
+		}
+		if apiError != nil {
+			return c.cancelCurrentFactorWithErrorMessage(transaction, apiError.ErrorSummary)
+		}
+
+		// Prompt user to check their device for an Okta Verify notification
+		c.prompts.VerifyPush()
+
+		// Setup and begin constant backoff policy that retries every 3 seconds with a maximum of 10 attempts (timeout after 30 seconds)
+		backoffPolicy := backoff.WithMaxRetries(backoff.NewConstantBackOff(3*time.Second), 10)
+		operation := func() error {
+			newTransaction, apiError, err = c.sendTransactionRequest(transaction.Links.Next.HREF, &verifyReq)
+			if err != nil {
+				return backoff.Permanent(err)
+			}
+			if apiError != nil {
+				return backoff.Permanent(apiError)
+			}
+			if newTransaction.Status == api.StateSuccess {
+				return nil
+			}
+			if newTransaction.FactorResult == api.FactorResultRejected {
+				fmt.Println("Authentication Request rejected")
+				return backoff.Permanent(&NonFatalAuthError{"Authentication Rejected"})
+			}
+			return &NonFatalAuthError{timeoutErrorMessage}
+		}
+		err = backoff.Retry(operation, backoffPolicy)
+
+		// If error is a NonFatalAuthError (timeout or rejection) then cancel the transaction so we can go through the auth flow again
+		if _, ok := err.(*NonFatalAuthError); ok {
+			if err.Error() == timeoutErrorMessage {
+				fmt.Println("Authentication Timed Out - please reject the current Okta Auth Request on your phone then try again")
+			}
+			c.sendTransactionRequest(newTransaction.Links.Cancel.HREF, &verifyReq)
+			return "", err
+		}
+		if err != nil {
+			return c.cancelCurrentFactorWithErrorMessage(transaction, err.Error())
 		}
 		return c.handleAuthUserFlow(newTransaction, false)
 
