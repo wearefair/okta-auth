@@ -13,6 +13,8 @@ const (
 	FactorResultTimeWindowExceeded = FactorResult("TIME_WINDOW_EXCEEDED")
 	FactorResultPasscodeReplayed   = FactorResult("PASSCODE_REPLAYED")
 	FactorResultError              = FactorResult("ERROR")
+	FactorResultRejected           = FactorResult("REJECTED")
+	FactorResultSuccess            = FactorResult("SUCCESS")
 )
 
 type TransactionState string
@@ -39,6 +41,10 @@ type APIError struct {
 
 type APIErrorCause struct {
 	ErrorSummary string
+}
+
+func (apiError APIError) Error() string {
+	return apiError.ErrorSummary
 }
 
 type AuthenticationRequest struct {

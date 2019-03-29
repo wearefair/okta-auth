@@ -33,11 +33,22 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cenkalti/backoff"
 	"github.com/wearefair/okta-auth/api"
 	"github.com/wearefair/okta-auth/factors"
 )
 
 const unexpectedErrorMessage = "Encountered an unexpected error."
+const timeoutErrorMessage = "Authentication Timed Out"
+
+// Custom error for handling auth timeout and rejection
+type NonFatalAuthError struct {
+	ErrorSummary string
+}
+
+func (nonFatalAuthError NonFatalAuthError) Error() string {
+	return nonFatalAuthError.ErrorSummary
+}
 
 // Given a username and password, returns a session token or an error.
 // You can then use the session token to obtain a session id.
@@ -142,63 +153,13 @@ func (c *OktaClient) startMFA(transaction api.AuthenticationTransaction, factor 
 func (c *OktaClient) handleMFAChallenge(transaction api.AuthenticationTransaction) (string, error) {
 	switch transaction.Embedded.Factor.FactorType {
 	case factors.FactorTypeU2F:
-		profile, ok := transaction.Embedded.Factor.Profile.(api.FactorProfileU2F)
-		if !ok {
-			c.log("Profile was not of type FactorProfileU2F: %s", transaction.Embedded.Factor.Profile)
-			return c.cancelCurrentFactorWithErrorMessage(transaction, unexpectedErrorMessage)
-		}
-
-		// Setup a context with the timeout set to the value provided by Okta
-		timeoutSeconds := transaction.Embedded.Factor.Embedded.Challenge.TimeoutSeconds
-		ctx, _ := context.WithTimeout(context.Background(), time.Second*time.Duration(timeoutSeconds))
-
-		authResp, err := c.prompts.VerifyU2F(ctx, VerifyU2FRequest{
-			Facet:     c.domain,
-			AppId:     profile.AppId,
-			KeyHandle: profile.CredentialId,
-			Challenge: transaction.Embedded.Factor.Embedded.Challenge.Nonce,
-		})
-		if err != nil {
-			c.prompts.PresentUserError(fmt.Sprintf("Failed to authenticate: %s\n", err))
-			return c.cancelCurrentFactor(transaction)
-		}
-
-		verifyReq := api.FactorVerifyU2F{
-			FactorVerify: api.FactorVerify{
-				StateToken: transaction.StateToken,
-			},
-			ClientData:    authResp.ClientData,
-			SignatureData: authResp.SignatureData,
-		}
-		newTransaction, apiError, err := c.sendTransactionRequest(transaction.Links.Next.HREF, &verifyReq)
-		if err != nil {
-			return "", err
-		}
-		if apiError != nil {
-			return c.cancelCurrentFactorWithErrorMessage(transaction, apiError.ErrorSummary)
-		}
-		return c.handleAuthUserFlow(newTransaction, false)
+		return c.handleFactorTypeU2F(transaction)
 
 	case factors.FactorTypeTokenSoftwareTOTP, factors.FactorTypeSMS, factors.FactorTypeCall:
-		code, err := c.prompts.VerifyCode(apiFactorToPublicFactor(transaction.Embedded.Factor))
-		if err != nil {
-			return c.cancelCurrentFactorWithErrorMessage(transaction, "Cancelled")
-		}
+		return c.handleFactorTypeCode(transaction)
 
-		verifyReq := api.FactorVerifyCode{
-			FactorVerify: api.FactorVerify{
-				StateToken: transaction.StateToken,
-			},
-			PassCode: code,
-		}
-		newTransaction, apiError, err := c.sendTransactionRequest(transaction.Links.Next.HREF, &verifyReq)
-		if err != nil {
-			return "", err
-		}
-		if apiError != nil {
-			return c.cancelCurrentFactorWithErrorMessage(transaction, apiError.ErrorSummary)
-		}
-		return c.handleAuthUserFlow(newTransaction, false)
+	case factors.FactorTypePush:
+		return c.handleFactorTypePush(transaction)
 
 	default:
 		return c.cancelCurrentFactorWithErrorMessage(transaction, "Sorry, that factor is not supported yet.")
@@ -223,6 +184,127 @@ func (c *OktaClient) cancelCurrentFactor(transaction api.AuthenticationTransacti
 		return "", TerminalError(unexpectedErrorMessage)
 	}
 
+	return c.handleAuthUserFlow(newTransaction, false)
+}
+
+func (c *OktaClient) handleFactorTypeU2F(transaction api.AuthenticationTransaction) (string, error) {
+	profile, ok := transaction.Embedded.Factor.Profile.(api.FactorProfileU2F)
+	if !ok {
+		c.log("Profile was not of type FactorProfileU2F: %s", transaction.Embedded.Factor.Profile)
+		return c.cancelCurrentFactorWithErrorMessage(transaction, unexpectedErrorMessage)
+	}
+
+	// Setup a context with the timeout set to the value provided by Okta
+	timeoutSeconds := transaction.Embedded.Factor.Embedded.Challenge.TimeoutSeconds
+	ctx, _ := context.WithTimeout(context.Background(), time.Second*time.Duration(timeoutSeconds))
+
+	authResp, err := c.prompts.VerifyU2F(ctx, VerifyU2FRequest{
+		Facet:     c.domain,
+		AppId:     profile.AppId,
+		KeyHandle: profile.CredentialId,
+		Challenge: transaction.Embedded.Factor.Embedded.Challenge.Nonce,
+	})
+	if err != nil {
+		c.prompts.PresentUserError(fmt.Sprintf("Failed to authenticate: %s\n", err))
+		return c.cancelCurrentFactor(transaction)
+	}
+
+	verifyReq := api.FactorVerifyU2F{
+		FactorVerify: api.FactorVerify{
+			StateToken: transaction.StateToken,
+		},
+		ClientData:    authResp.ClientData,
+		SignatureData: authResp.SignatureData,
+	}
+	newTransaction, apiError, err := c.sendTransactionRequest(transaction.Links.Next.HREF, &verifyReq)
+	if err != nil {
+		return "", err
+	}
+	if apiError != nil {
+		return c.cancelCurrentFactorWithErrorMessage(transaction, apiError.ErrorSummary)
+	}
+	return c.handleAuthUserFlow(newTransaction, false)
+}
+
+func (c *OktaClient) handleFactorTypeCode(transaction api.AuthenticationTransaction) (string, error) {
+	code, err := c.prompts.VerifyCode(apiFactorToPublicFactor(transaction.Embedded.Factor))
+	if err != nil {
+		return c.cancelCurrentFactorWithErrorMessage(transaction, "Cancelled")
+	}
+
+	verifyReq := api.FactorVerifyCode{
+		FactorVerify: api.FactorVerify{
+			StateToken: transaction.StateToken,
+		},
+		PassCode: code,
+	}
+	newTransaction, apiError, err := c.sendTransactionRequest(transaction.Links.Next.HREF, &verifyReq)
+	if err != nil {
+		return "", err
+	}
+	if apiError != nil {
+		return c.cancelCurrentFactorWithErrorMessage(transaction, apiError.ErrorSummary)
+	}
+	return c.handleAuthUserFlow(newTransaction, false)
+}
+
+// Logic for handling Okta Verify Push. Given a Authentication Transaction, will make an initial call to send a push notification
+// to user's device then prompts them to accept it. Uses a backoff policy to poll the verify endpoint while waiting on a user to accept.
+// Important to note that if a user times out, the initial verify request will still be on their phone and they'll have to accept/reject it
+// before trying again.
+// TODO: Configurable timeouts
+func (c *OktaClient) handleFactorTypePush(transaction api.AuthenticationTransaction) (string, error) {
+	var newTransaction api.AuthenticationTransaction
+
+	// Sends a request to Okta to push a notification to user's device
+	verifyReq := api.FactorVerifyPush{
+		FactorVerify: api.FactorVerify{
+			StateToken: transaction.StateToken,
+		},
+	}
+	transaction, apiError, err := c.sendTransactionRequest(transaction.Links.Next.HREF, &verifyReq)
+	if err != nil {
+		return c.cancelCurrentFactorWithErrorMessage(transaction, "Cancelled")
+	}
+	if apiError != nil {
+		return c.cancelCurrentFactorWithErrorMessage(transaction, apiError.ErrorSummary)
+	}
+
+	// Prompt user to check their device for an Okta Verify notification
+	c.prompts.VerifyPush()
+
+	// Setup and begin constant backoff policy that retries every 3 seconds with a maximum of 10 attempts (timeout after 30 seconds)
+	backoffPolicy := backoff.WithMaxRetries(backoff.NewConstantBackOff(3*time.Second), 10)
+	operation := func() error {
+		newTransaction, apiError, err = c.sendTransactionRequest(transaction.Links.Next.HREF, &verifyReq)
+		if err != nil {
+			return backoff.Permanent(err)
+		}
+		if apiError != nil {
+			return backoff.Permanent(apiError)
+		}
+		if newTransaction.Status == api.StateSuccess {
+			return nil
+		}
+		if newTransaction.FactorResult == api.FactorResultRejected {
+			fmt.Println("Authentication Request rejected")
+			return backoff.Permanent(&NonFatalAuthError{"Authentication Rejected"})
+		}
+		return &NonFatalAuthError{timeoutErrorMessage}
+	}
+	err = backoff.Retry(operation, backoffPolicy)
+
+	// If error is a NonFatalAuthError (timeout or rejection) then cancel the transaction so we can go through the auth flow again
+	if _, ok := err.(*NonFatalAuthError); ok {
+		if err.Error() == timeoutErrorMessage {
+			fmt.Println("Authentication Timed Out - please reject the current Okta Auth Request on your phone then try again")
+		}
+		c.sendTransactionRequest(newTransaction.Links.Cancel.HREF, &verifyReq)
+		return "", err
+	}
+	if err != nil {
+		return c.cancelCurrentFactorWithErrorMessage(transaction, err.Error())
+	}
 	return c.handleAuthUserFlow(newTransaction, false)
 }
 

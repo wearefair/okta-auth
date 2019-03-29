@@ -137,6 +137,10 @@ type FactorVerifyU2F struct {
 	SignatureData string `json:"signatureData"`
 }
 
+type FactorVerifyPush struct {
+	FactorVerify
+}
+
 func indexOfFactorType(factorType factors.FactorType) int {
 	for i, t := range knownFactors {
 		if factorType == t {

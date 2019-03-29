@@ -1,0 +1,10 @@
+# Refer to https://golang.github.io/dep/docs/Gopkg.toml.html
+# for detailed Gopkg.toml documentation.
+
+[[constraint]]
+  name = "github.com/cenkalti/backoff"
+  version = "2.1.1"
+
+[prune]
+  go-tests = true
+  unused-packages = true

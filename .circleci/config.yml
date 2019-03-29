@@ -8,6 +8,14 @@ jobs:
     steps:
       - checkout
       - run:
+          name: Install dep tool
+          command: |
+            go get -u github.com/golang/dep/cmd/dep
+      - run:
+          name: Install dependencies
+          command: |
+            dep ensure
+      - run:
           name: Run unit tests
           command: |
             go test -race -v ./...
