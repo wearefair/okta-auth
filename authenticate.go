@@ -26,6 +26,8 @@ by the handleAuthUserFlow function.
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -117,6 +119,11 @@ func (c *OktaClient) handleMFARequired(transaction api.AuthenticationTransaction
 			c.prompts.CheckU2FPresence(u2fProfileToChallenge(c.domain, "", factor.Profile.(api.FactorProfileU2F))) {
 			return c.startMFA(transaction, factor)
 		}
+
+		if factor.FactorType == factors.FactorTypeWebAuthN && autoAttemptU2F &&
+			c.prompts.CheckU2FPresence(webAuthNProfileToChallenge(c.domain, "", factor.Profile.(api.FactorProfileWebAuthN))) {
+			return c.startMFA(transaction, factor)
+		}
 	}
 
 	publicFactors := apiFactorsToPublicFactors(supported)
@@ -154,6 +161,52 @@ func (c *OktaClient) handleMFAChallenge(transaction api.AuthenticationTransactio
 	switch transaction.Embedded.Factor.FactorType {
 	case factors.FactorTypeU2F:
 		return c.handleFactorTypeU2F(transaction)
+
+	case factors.FactorTypeWebAuthN:
+		profile, ok := transaction.Embedded.Factor.Profile.(api.FactorProfileWebAuthN)
+		if !ok {
+			c.log("Profile was not of type FactorProfileWebAuthN: %s", transaction.Embedded.Factor.Profile)
+			return c.cancelCurrentFactorWithErrorMessage(transaction, unexpectedErrorMessage)
+		}
+
+		// Setup a context with the timeout set to the value provided by Okta
+		timeoutSeconds := 30
+		ctx, _ := context.WithTimeout(context.Background(), time.Second*time.Duration(timeoutSeconds))
+
+		authResp, err := c.prompts.VerifyU2F(ctx, VerifyU2FRequest{
+			Facet:     c.domain,
+			AppId:     c.domain,
+			KeyHandle: profile.CredentialId,
+			Challenge: transaction.Embedded.Factor.Embedded.Challenge.Challenge,
+		})
+		if err != nil {
+			c.prompts.PresentUserError(fmt.Sprintf("Failed to authenticate: %s\n", err))
+			return c.cancelCurrentFactor(transaction)
+		}
+
+		authData := make([]byte, 37)
+		rpid := sha256.Sum256([]byte(c.domain))
+		copy(authData[0:32], rpid[0:32])
+		authData[32] = 0x80
+
+		authDataB64 := base64.StdEncoding.EncodeToString(authData)
+
+		verifyReq := api.FactorVerifyWebAuthN{
+			FactorVerify: api.FactorVerify{
+				StateToken: transaction.StateToken,
+			},
+			ClientData:        authResp.ClientData,
+			SignatureData:     authResp.SignatureData,
+			AuthenticatorData: authDataB64,
+		}
+		newTransaction, apiError, err := c.sendTransactionRequest(transaction.Links.Next.HREF, &verifyReq)
+		if err != nil {
+			return "", err
+		}
+		if apiError != nil {
+			return c.cancelCurrentFactorWithErrorMessage(transaction, apiError.ErrorSummary)
+		}
+		return c.handleAuthUserFlow(newTransaction, false)
 
 	case factors.FactorTypeTokenSoftwareTOTP, factors.FactorTypeSMS, factors.FactorTypeCall:
 		return c.handleFactorTypeCode(transaction)
@@ -389,6 +442,15 @@ func (c *OktaClient) sendRequest(method, url string, body interface{}) (int, []b
 func u2fProfileToChallenge(facet, challenge string, profile api.FactorProfileU2F) VerifyU2FRequest {
 	return VerifyU2FRequest{
 		AppId:     profile.AppId,
+		Facet:     facet,
+		KeyHandle: profile.CredentialId,
+		Challenge: challenge,
+	}
+}
+
+func webAuthNProfileToChallenge(facet, challenge string, profile api.FactorProfileWebAuthN) VerifyU2FRequest {
+	return VerifyU2FRequest{
+		AppId:     facet,
 		Facet:     facet,
 		KeyHandle: profile.CredentialId,
 		Challenge: challenge,
