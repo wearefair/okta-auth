@@ -7,6 +7,7 @@ const (
 	FactorTypeSMS               = FactorType("sms")
 	FactorTypeCall              = FactorType("call")
 	FactorTypeU2F               = FactorType("u2f")
+	FactorTypeWebAuthN          = FactorType("webauthn")
 	FactorTypeToken             = FactorType("token")
 	FactorTypeTokenSoftwareTOTP = FactorType("token:software:totp")
 	FactorTypeTokenHardware     = FactorType("token:hardware")
