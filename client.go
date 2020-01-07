@@ -35,13 +35,15 @@ type VerifyU2FRequest struct {
 	AppId     string
 	KeyHandle string
 	Challenge string
+	WebAuthn  bool
 }
 
 // Data returned after successfully authenticating with a U2F device.
 // For more information see https://fidoalliance.org/specifications/
 type VerifyU2FResponse struct {
-	ClientData    string
-	SignatureData string
+	ClientData        string
+	SignatureData     string
+	AuthenticatorData string
 }
 
 type Prompts interface {

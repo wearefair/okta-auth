@@ -176,7 +176,7 @@ func (c *OktaClient) handleMFAChallenge(transaction api.AuthenticationTransactio
 			AppId:     c.domain,
 			KeyHandle: profile.CredentialId,
 			Challenge: transaction.Embedded.Factor.Embedded.Challenge.Challenge,
-			WebAuthN:  true,
+			WebAuthn:  true,
 		})
 		if err != nil {
 			c.prompts.PresentUserError(fmt.Sprintf("Failed to authenticate: %s\n", err))
