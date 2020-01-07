@@ -26,8 +26,6 @@ by the handleAuthUserFlow function.
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -178,18 +176,12 @@ func (c *OktaClient) handleMFAChallenge(transaction api.AuthenticationTransactio
 			AppId:     c.domain,
 			KeyHandle: profile.CredentialId,
 			Challenge: transaction.Embedded.Factor.Embedded.Challenge.Challenge,
+			WebAuthN:  true,
 		})
 		if err != nil {
 			c.prompts.PresentUserError(fmt.Sprintf("Failed to authenticate: %s\n", err))
 			return c.cancelCurrentFactor(transaction)
 		}
-
-		authData := make([]byte, 37)
-		rpid := sha256.Sum256([]byte(c.domain))
-		copy(authData[0:32], rpid[0:32])
-		authData[32] = 0x80
-
-		authDataB64 := base64.StdEncoding.EncodeToString(authData)
 
 		verifyReq := api.FactorVerifyWebAuthN{
 			FactorVerify: api.FactorVerify{
@@ -197,7 +189,7 @@ func (c *OktaClient) handleMFAChallenge(transaction api.AuthenticationTransactio
 			},
 			ClientData:        authResp.ClientData,
 			SignatureData:     authResp.SignatureData,
-			AuthenticatorData: authDataB64,
+			AuthenticatorData: authResp.AuthenticatorData,
 		}
 		newTransaction, apiError, err := c.sendTransactionRequest(transaction.Links.Next.HREF, &verifyReq)
 		if err != nil {
@@ -454,6 +446,7 @@ func webAuthNProfileToChallenge(facet, challenge string, profile api.FactorProfi
 		Facet:     facet,
 		KeyHandle: profile.CredentialId,
 		Challenge: challenge,
+		WebAuthn:  true,
 	}
 }
 
