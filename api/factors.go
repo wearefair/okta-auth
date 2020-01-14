@@ -79,6 +79,10 @@ func (f *Factor) UnmarshalJSON(data []byte) error {
 		profile := FactorProfileU2F{}
 		err = json.Unmarshal([]byte(factor.Profile), &profile)
 		f.Profile = profile
+	case factors.FactorTypeWebAuthN:
+		profile := FactorProfileWebAuthN{}
+		err = json.Unmarshal([]byte(factor.Profile), &profile)
+		f.Profile = profile
 	default:
 		// Ignore any profile contents we don't understand
 		return nil
@@ -92,6 +96,7 @@ type FactorEmbedded struct {
 }
 
 type Challenge struct {
+	Challenge      string
 	Nonce          string
 	TimeoutSeconds int
 }
@@ -121,6 +126,10 @@ type FactorProfileU2F struct {
 	Version      string `json:"version,omitempty"`
 }
 
+type FactorProfileWebAuthN struct {
+	CredentialId string `json:"credentialId,omitempty"`
+}
+
 type FactorVerify struct {
 	StateToken string `json:"stateToken"`
 }
@@ -141,6 +150,13 @@ type FactorVerifyPush struct {
 	FactorVerify
 }
 
+type FactorVerifyWebAuthN struct {
+	FactorVerify
+	ClientData        string `json:"clientData"`
+	SignatureData     string `json:"signatureData"`
+	AuthenticatorData string `json:"authenticatorData"`
+}
+
 func indexOfFactorType(factorType factors.FactorType) int {
 	for i, t := range knownFactors {
 		if factorType == t {
@@ -152,6 +168,7 @@ func indexOfFactorType(factorType factors.FactorType) int {
 
 var knownFactors = []factors.FactorType{
 	factors.FactorTypeU2F,
+	factors.FactorTypeWebAuthN,
 	factors.FactorTypeToken,
 	factors.FactorTypeTokenSoftwareTOTP,
 	factors.FactorTypeTokenHardware,

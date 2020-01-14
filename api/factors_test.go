@@ -47,6 +47,22 @@ func TestFactorUnmarshalJSON(t *testing.T) {
 				},
 			},
 		},
+		{
+			input: sampleWebAuthNFactor,
+			expected: Factor{
+				Id:         "fufb6rh45mUxtEJz61t7",
+				FactorType: factors.FactorTypeWebAuthN,
+				Provider:   "FIDO",
+				Profile: FactorProfileWebAuthN{
+					CredentialId: "s94CdJnUd148p95PNq7AaY2Dv1QFrLJ12Vpkno-Q7WalmBTtB5TMnzDNL_yX84Ay49qnEiUXtSx0KK5I60ht2g",
+				},
+				Links: Links{
+					Verify: Link{
+						HREF: "https://example.okta.com/api/v1/authn/factors/fufb6rh45mUxtEJz61t7/verify",
+					},
+				},
+			},
+		},
 	}
 
 	for i, testCase := range testCases {
@@ -98,6 +114,28 @@ var sampleU2FFactor = `
   "_links": {
     "verify": {
       "href": "https:\/\/example.okta.com\/api\/v1\/authn\/factors\/fuf59d1ohqJZyOelX1t7\/verify",
+      "hints": {
+        "allow": [
+          "POST"
+        ]
+      }
+    }
+  }
+}
+`
+
+var sampleWebAuthNFactor = `
+{
+  "id": "fufb6rh45mUxtEJz61t7",
+  "factorType": "webauthn",
+  "provider": "FIDO",
+  "vendorName": "FIDO",
+  "profile": {
+    "credentialId": "s94CdJnUd148p95PNq7AaY2Dv1QFrLJ12Vpkno-Q7WalmBTtB5TMnzDNL_yX84Ay49qnEiUXtSx0KK5I60ht2g"
+  },
+  "_links": {
+    "verify": {
+      "href": "https://example.okta.com/api/v1/authn/factors/fufb6rh45mUxtEJz61t7/verify",
       "hints": {
         "allow": [
           "POST"
