@@ -77,6 +77,7 @@ type Prompts interface {
 
 type OktaClient struct {
 	domain     string
+	rootURL    string
 	httpClient *http.Client
 	logger     DebugLogger
 	prompts    Prompts
@@ -96,7 +97,8 @@ func New(conf ClientConfig) (*OktaClient, error) {
 	}
 
 	return &OktaClient{
-		domain:  "https://" + conf.OktaDomain,
+		domain:  conf.OktaDomain,
+		rootURL: "https://" + conf.OktaDomain,
 		prompts: conf.Prompts,
 		logger:  conf.DebugLogger,
 		httpClient: &http.Client{

@@ -56,7 +56,7 @@ func (nonFatalAuthError NonFatalAuthError) Error() string {
 //
 // If a second factor is required, the configured callbacks on the client will be invoked.
 func (c *OktaClient) Authenticate(username, password string) (string, error) {
-	url := c.domain + "/api/v1/authn"
+	url := c.rootURL + "/api/v1/authn"
 	c.log("Posting auth request to %q with username %q ", url, username)
 
 	transaction, apiError, err := c.sendTransactionRequest(url, &api.AuthenticationRequest{
@@ -85,13 +85,13 @@ func (c *OktaClient) handleAuthUserFlow(transaction api.AuthenticationTransactio
 	case api.StateSuccess:
 		return transaction.SessionToken, nil
 	case api.StatePasswordExpired:
-		return "", TerminalError(fmt.Sprintf("Your password is expired, login to %s to resolve.", c.domain))
+		return "", TerminalError(fmt.Sprintf("Your password is expired, login to %s to resolve.", c.rootURL))
 	case api.StateRecovery:
-		return "", TerminalError(fmt.Sprintf("Your account is in recovery, login to %s to resolve.", c.domain))
+		return "", TerminalError(fmt.Sprintf("Your account is in recovery, login to %s to resolve.", c.rootURL))
 	case api.StateLockedOut:
 		return "", TerminalError("Your account has been locked, please contact your administrator for assistance.")
 	case api.StateMFAEnroll, api.StateMFAEnrollActivate:
-		return "", TerminalError(fmt.Sprintf("You are required to enroll an MFA method, login to %s to resolve.", c.domain))
+		return "", TerminalError(fmt.Sprintf("You are required to enroll an MFA method, login to %s to resolve.", c.rootURL))
 	case api.StateMFARequired:
 		return c.handleMFARequired(transaction, autoAttemptU2F)
 	case api.StateMFAChallenge:
@@ -161,44 +161,7 @@ func (c *OktaClient) handleMFAChallenge(transaction api.AuthenticationTransactio
 		return c.handleFactorTypeU2F(transaction)
 
 	case factors.FactorTypeWebAuthN:
-		profile, ok := transaction.Embedded.Factor.Profile.(api.FactorProfileWebAuthN)
-		if !ok {
-			c.log("Profile was not of type FactorProfileWebAuthN: %s", transaction.Embedded.Factor.Profile)
-			return c.cancelCurrentFactorWithErrorMessage(transaction, unexpectedErrorMessage)
-		}
-
-		// Setup a context with the timeout set to the value provided by Okta
-		timeoutSeconds := 30
-		ctx, _ := context.WithTimeout(context.Background(), time.Second*time.Duration(timeoutSeconds))
-
-		authResp, err := c.prompts.VerifyU2F(ctx, VerifyU2FRequest{
-			Facet:     c.domain,
-			AppId:     c.domain,
-			KeyHandle: profile.CredentialId,
-			Challenge: transaction.Embedded.Factor.Embedded.Challenge.Challenge,
-			WebAuthn:  true,
-		})
-		if err != nil {
-			c.prompts.PresentUserError(fmt.Sprintf("Failed to authenticate: %s\n", err))
-			return c.cancelCurrentFactor(transaction)
-		}
-
-		verifyReq := api.FactorVerifyWebAuthN{
-			FactorVerify: api.FactorVerify{
-				StateToken: transaction.StateToken,
-			},
-			ClientData:        authResp.ClientData,
-			SignatureData:     authResp.SignatureData,
-			AuthenticatorData: authResp.AuthenticatorData,
-		}
-		newTransaction, apiError, err := c.sendTransactionRequest(transaction.Links.Next.HREF, &verifyReq)
-		if err != nil {
-			return "", err
-		}
-		if apiError != nil {
-			return c.cancelCurrentFactorWithErrorMessage(transaction, apiError.ErrorSummary)
-		}
-		return c.handleAuthUserFlow(newTransaction, false)
+		return c.handleFactorTypeWebAuthn(transaction)
 
 	case factors.FactorTypeTokenSoftwareTOTP, factors.FactorTypeSMS, factors.FactorTypeCall:
 		return c.handleFactorTypeCode(transaction)
@@ -232,6 +195,49 @@ func (c *OktaClient) cancelCurrentFactor(transaction api.AuthenticationTransacti
 	return c.handleAuthUserFlow(newTransaction, false)
 }
 
+func (c *OktaClient) handleFactorTypeWebAuthn(transaction api.AuthenticationTransaction) (string, error) {
+	profile, ok := transaction.Embedded.Factor.Profile.(api.FactorProfileWebAuthN)
+	if !ok {
+		c.log("Profile was not of type FactorProfileWebAuthN: %s", transaction.Embedded.Factor.Profile)
+		return c.cancelCurrentFactorWithErrorMessage(transaction, unexpectedErrorMessage)
+	}
+
+	// Setup a context with the timeout set to the value provided by Okta
+	timeoutSeconds := 30
+	ctx, _ := context.WithTimeout(context.Background(), time.Second*time.Duration(timeoutSeconds))
+
+	req := VerifyU2FRequest{
+		Facet:     "https://" + c.domain,
+		AppId:     c.domain,
+		KeyHandle: profile.CredentialId,
+		Challenge: transaction.Embedded.Factor.Embedded.Challenge.Challenge,
+		WebAuthn:  true,
+	}
+	authResp, err := c.prompts.VerifyU2F(ctx, req)
+	if err != nil {
+		c.prompts.PresentUserError(fmt.Sprintf("Failed to authenticate: %s\n", err))
+		return c.cancelCurrentFactor(transaction)
+	}
+
+	verifyReq := api.FactorVerifyWebAuthN{
+		FactorVerify: api.FactorVerify{
+			StateToken: transaction.StateToken,
+		},
+		ClientData:        authResp.ClientData,
+		SignatureData:     authResp.SignatureData,
+		AuthenticatorData: authResp.AuthenticatorData,
+	}
+	newTransaction, apiError, err := c.sendTransactionRequest(transaction.Links.Next.HREF, &verifyReq)
+	if err != nil {
+		return "", err
+	}
+	if apiError != nil {
+		return c.cancelCurrentFactorWithErrorMessage(transaction, apiError.ErrorSummary)
+	}
+	return c.handleAuthUserFlow(newTransaction, false)
+
+}
+
 func (c *OktaClient) handleFactorTypeU2F(transaction api.AuthenticationTransaction) (string, error) {
 	profile, ok := transaction.Embedded.Factor.Profile.(api.FactorProfileU2F)
 	if !ok {
@@ -244,7 +250,7 @@ func (c *OktaClient) handleFactorTypeU2F(transaction api.AuthenticationTransacti
 	ctx, _ := context.WithTimeout(context.Background(), time.Second*time.Duration(timeoutSeconds))
 
 	authResp, err := c.prompts.VerifyU2F(ctx, VerifyU2FRequest{
-		Facet:     c.domain,
+		Facet:     "https://" + c.domain,
 		AppId:     profile.AppId,
 		KeyHandle: profile.CredentialId,
 		Challenge: transaction.Embedded.Factor.Embedded.Challenge.Nonce,
