@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/wearefair/okta-auth/factors"
 )
@@ -96,9 +97,18 @@ func New(conf ClientConfig) (*OktaClient, error) {
 		return nil, fmt.Errorf("ClientConfig.Prompts can't be nil")
 	}
 
+	rootURL, err := url.Parse(conf.OktaDomain)
+	if err != nil {
+		return nil, fmt.Errorf("ClientConfig.OktaDomain is not valid: %v", err)
+	}
+
+	if rootURL.Scheme == "" {
+		rootURL.Scheme = "https"
+	}
+
 	return &OktaClient{
 		domain:  conf.OktaDomain,
-		rootURL: "https://" + conf.OktaDomain,
+		rootURL: fmt.Sprintf("%s://%s", rootURL.Scheme, rootURL.Host),
 		prompts: conf.Prompts,
 		logger:  conf.DebugLogger,
 		httpClient: &http.Client{
