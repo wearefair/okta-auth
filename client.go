@@ -104,10 +104,11 @@ func New(conf ClientConfig) (*OktaClient, error) {
 
 	if rootURL.Scheme == "" {
 		rootURL.Scheme = "https"
+		rootURL.Host = rootURL.Path
 	}
 
 	return &OktaClient{
-		domain:  conf.OktaDomain,
+		domain:  rootURL.Host,
 		rootURL: fmt.Sprintf("%s://%s", rootURL.Scheme, rootURL.Host),
 		prompts: conf.Prompts,
 		logger:  conf.DebugLogger,
